@@ -104,7 +104,7 @@ export function Footer({ navigate }: Props) {
 
         <div className="mt-12 flex flex-col items-center justify-between gap-4 border-t border-ink-200 pt-6 sm:flex-row">
           <p className="text-xs text-ink-400">© 2026 QuadraConverter AI. All rights reserved.</p>
-          <p className="text-xs text-ink-400">Built with React, Vite, TypeScript & Tailwind CSS</p>
+          <p className="text-xs text-ink-400">Powered By QuadraFroyn Solutions</p>
         </div>
       </div>
     </footer>
