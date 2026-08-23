@@ -1496,40 +1496,56 @@ export function ToolWorkspace({
    * ---------------------------------------------------------
    */
 
-  const handleShare = (
-    result: Converters.ConvertResult,
-    method:
-      | 'email'
-      | 'whatsapp'
-  ) => {
-    const subject =
-      `Converted file: ${result.filename}`;
+  const handleShare = async (
+  result: Converters.ConvertResult,
+  method: "email" | "whatsapp"
+) => {
+  if (method === "whatsapp") {
+    const file = new File([result.blob], result.filename, {
+      type: result.blob.type || "application/octet-stream",
+      lastModified: Date.now(),
+    });
 
-    const body =
-      `I converted a file using ${tool.name}.\n\n` +
-      `File: ${result.filename}\n` +
-      `Size: ${(result.blob.size / 1024).toFixed(1)} KB\n\n` +
-      `Download it from QuadraConverter.`;
+    try {
+      if (
+        navigator.canShare &&
+        navigator.canShare({ files: [file] })
+      ) {
+        await navigator.share({
+          title: "QuadraConverter Output",
+          text: `Converted using ${tool.name}`,
+          files: [file],
+        });
 
-    if (
-      method === 'whatsapp'
-    ) {
-      window.open(
-        `https://wa.me/?text=${encodeURIComponent(
-          `${subject}\n\n${body}`
-        )}`,
-        '_blank',
-        'noopener,noreferrer'
+        return;
+      }
+
+      // Desktop fallback
+      const url = URL.createObjectURL(result.blob);
+
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = result.filename;
+      a.click();
+
+      URL.revokeObjectURL(url);
+
+      alert(
+        "WhatsApp Web cannot receive files directly from a browser. The converted file has been downloaded. Attach it in WhatsApp."
       );
-
-      return;
+    } catch (err) {
+      console.error(err);
     }
 
-    setEmailResult(result);
-    setEmailAddress('');
-    setEmailStatus(null);
-  };
+    return;
+  }
 
+  // Email dialog
+  setEmailResult(result);
+  setEmailAddress("");
+  setEmailStatus(null);
+};
+  /*
   /*
    * ---------------------------------------------------------
    * RESET
@@ -2487,19 +2503,7 @@ export function ToolWorkspace({
                             Preview
                           </button>
 
-                          <button
-                            type="button"
-                            onClick={() =>
-                              handleShare(
-                                result,
-                                'email'
-                              )
-                            }
-                            className="btn-ghost text-sm"
-                          >
-                            <Mail className="h-4 w-4" />
-                            Email
-                          </button>
+                          
 
                           <button
                             type="button"
@@ -2512,7 +2516,7 @@ export function ToolWorkspace({
                             className="btn-ghost text-sm"
                           >
                             <Share2 className="h-4 w-4" />
-                            WhatsApp
+                            Share
                           </button>
                         </div>
                       </div>
