@@ -59,7 +59,7 @@ export function LandingPage({ navigate }: Props) {
           <div className="relative mx-auto mt-12 hidden h-10 max-w-4xl sm:block" aria-hidden="true">
             <div className="qc-orbit qc-orbit-a"><div className="qc-orbit-card"><b className="text-xs text-ink-900">PDF → Word</b><span className="mt-1 block text-[10px] text-emerald-600">Smart extraction</span></div></div>
             <div className="qc-orbit qc-orbit-b"><div className="qc-orbit-card"><b className="text-xs text-ink-900">E-Signature</b><span className="mt-1 block text-[10px] text-brand-600">Verified workflow</span></div></div>
-            <div className="qc-orbit qc-orbit-c"><div className="qc-orbit-card"><b className="text-xs text-ink-900">AI OCR</b><span className="mt-1 block text-[10px] text-accent-600">Instant recognition</span></div></div>
+            
           </div>
 
           <div className="mx-auto mt-4 max-w-3xl animate-fade-up" style={{ animationDelay: '240ms' }}>
