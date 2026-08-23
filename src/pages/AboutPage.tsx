@@ -13,7 +13,7 @@ const teamMembers = [
   {
     name: "Umabharathi A",
     role: "Founder & CEO",
-    image: "dhana.jpg",
+    image: "ub.jpg",
     icon: ShieldCheck,
     description:
       "Driving the vision behind QuadraConverter and shaping a simpler, smarter future for document workflows.",
@@ -21,7 +21,7 @@ const teamMembers = [
   {
     name: "Dhanalakshmi E",
     role: "Co-Founder & CTO",
-    image: "dhana.jpg",
+    image: "dhana.png",
     icon: Code2,
     description:
       "Building the technology that powers reliable, secure and intelligent document experiences.",
@@ -29,7 +29,7 @@ const teamMembers = [
   {
     name: "Meeradharshni K",
     role: "Co-Founder & COO",
-    image: "dhana.jpg",
+    image: "meera.jpg",
     icon: Network,
     description:
       "Turning ideas into smooth operations while keeping every part of the product experience connected.",
@@ -37,7 +37,7 @@ const teamMembers = [
   {
     name: "Nithiya Sri M",
     role: "Co-Founder & CFO",
-    image: "dhana.jpg",
+    image: "nithi.jpg",
     icon: Target,
     description:
       "Helping build a sustainable foundation for QuadraConverter with thoughtful planning and long-term growth.",
