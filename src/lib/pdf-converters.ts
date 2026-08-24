@@ -782,7 +782,13 @@ export async function scanToPDF(
     mimeType: 'application/pdf',
   };
 }
+// ─── Images to PDF ───────────────────────────────────────────
 
+export async function imagesToPDF(
+  files: File[],
+): Promise<ConvertResult> {
+  return scanToPDF(files);
+}
 // ─── Optimize PDF ────────────────────────────────────────────
 
 export async function optimizePDF(
