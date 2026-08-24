@@ -4454,6 +4454,10 @@ async def convert(
         # PDF TRANSLATE
         # ====================================================
 
+                # ====================================================
+        # PDF TRANSLATE
+        # ====================================================
+
         if operation == "pdf-translate":
 
             source = save_upload(
@@ -4462,106 +4466,38 @@ async def convert(
                 ALLOWED_PDF,
             )
 
-            text = extract_pdf_text(
-                source
-            )
-
-            if not text.strip():
-
-                raise HTTPException(
-                    status_code=422,
-                    detail=(
-                        "No readable text was found "
-                        "in this PDF."
-                    ),
-                )
-
             target_language = (
                 targetLang
                 or "en"
             ).strip()
 
-            translated = (
-                translation_request(
-                    text,
-                    target_language,
-                )
-            )
-
-            if not translated.strip():
+            if not target_language:
 
                 raise HTTPException(
-                    status_code=422,
+                    status_code=400,
                     detail=(
-                        "The translation service "
-                        "returned no translated text."
+                        "Please select a target language."
                     ),
                 )
 
             output = (
                 work
-                / f"{source.stem}-translated.txt"
+                / f"{source.stem}-translated.pdf"
             )
 
-            output.write_text(
-                translated,
-                encoding="utf-8",
+            translate_pdf_with_layout(
+                source,
+                output,
+                target_language,
+                language,
             )
 
             return file_response(
                 output,
-                "text/plain; charset=utf-8",
+                "application/pdf",
                 work,
-                "Translation API",
+                "Quadra AI + PyMuPDF + OCR",
             )
-
-        # ====================================================
-        # UNKNOWN OPERATION
-        # ====================================================
-
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                f"Unsupported conversion operation: "
-                f"{operation}"
-            ),
-        )
-
-    except HTTPException:
-
-        cleanup(
-            work
-        )
-
-        raise
-
-    except Exception as exc:
-
-        cleanup(
-            work
-        )
-
-        print(
-            "[QuadraConverter] "
-            f"Unexpected conversion error: {exc}"
-        )
-
-        raise HTTPException(
-            status_code=500,
-            detail=(
-                "Conversion failed: "
-                f"{str(exc)}"
-            ),
-        )
-
-    finally:
-
-        try:
-            await file.close()
-        except Exception:
-            pass
-
-
 # ============================================================
 # STARTUP DIAGNOSTICS
 # ============================================================
