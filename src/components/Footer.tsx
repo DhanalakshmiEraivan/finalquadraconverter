@@ -91,7 +91,6 @@ export function Footer({ navigate }: Props) {
           <div>
             <h4 className="text-xs font-bold uppercase tracking-wider text-ink-400">Company</h4>
             <ul className="mt-4 space-y-2.5 text-sm">
-              <li><button onClick={() => navigate('/about')} className="text-ink-600 hover:text-brand-600">About</button></li>
               <li><button onClick={() => navigate('/contact')} className="text-ink-600 hover:text-brand-600">Contact</button></li>
               <li><span className="text-ink-600">Blog</span></li>
               <li><span className="text-ink-600">Support</span></li>
