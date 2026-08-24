@@ -14,15 +14,24 @@ export interface Tool {
 }
 
 export interface ToolOption {
-  key: string;
+ key: string;
   label: string;
-  type: 'select' | 'number' | 'text' | 'checkbox' | 'range';
-  default: string | number | boolean;
-  choices?: { value: string; label: string }[];
+  type:
+    | 'text'
+    | 'textarea'
+    | 'select'
+    | 'number'
+    | 'range'
+    | 'checkbox';
+  default?: string | number | boolean;
+  placeholder?: string;
   min?: number;
   max?: number;
   step?: number;
-  placeholder?: string;
+  choices?: {
+    value: string;
+    label: string;
+  }[];
 }
 
 export interface Category {
