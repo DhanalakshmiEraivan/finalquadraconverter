@@ -14,6 +14,6 @@ Pillow>=10,<13
 httpx>=0.27,<1
 
 resend>=2.15,<3
-
+python-dotenv
 cryptography>=43,<46
 pyHanko>=0.30,<1
