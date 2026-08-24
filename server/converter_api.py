@@ -542,59 +542,75 @@ def file_response(
 
 
 def normalize_ocr_language(
-    language: str | None,
+    language: str,
 ) -> str:
 
     value = (
-        language
-        or "eng"
+        language or "eng"
     ).strip().lower()
 
-    value = value.replace(
-        "-",
-        "_",
-    )
-
-    languages = {
-        "eng": "eng",
+    aliases = {
         "english": "eng",
+        "en": "eng",
 
-        "tam": "tam",
-        "tamil": "tam",
-
-        "hin": "hin",
         "hindi": "hin",
+        "hi": "hin",
 
-        "mal": "mal",
-        "malayalam": "mal",
+        "tamil": "tam",
+        "ta": "tam",
 
-        "tel": "tel",
         "telugu": "tel",
+        "te": "tel",
 
-        "kan": "kan",
+        "malayalam": "mal",
+        "ml": "mal",
+
         "kannada": "kan",
+        "kn": "kan",
 
-        "fra": "fra",
-        "french": "fra",
+        "marathi": "mar",
+        "mr": "mar",
 
-        "deu": "deu",
-        "ger": "deu",
-        "german": "deu",
+        "bengali": "ben",
+        "bn": "ben",
 
-        "spa": "spa",
-        "spanish": "spa",
+        "gujarati": "guj",
+        "gu": "guj",
 
-        "ita": "ita",
-        "italian": "ita",
+        "punjabi": "pan",
+        "pa": "pan",
 
-        "por": "por",
-        "portuguese": "por",
+        "odia": "ori",
+        "or": "ori",
+
+        "urdu": "urd",
+        "ur": "urd",
+
+        "sanskrit": "san",
+        "sa": "san",
     }
 
-    return languages.get(
+    parts = []
+
+    for item in re.split(
+        r"[+,;\s]+",
         value,
-        "eng",
-    )
+    ):
+        item = item.strip()
+
+        if not item:
+            continue
+
+        parts.append(
+            aliases.get(
+                item,
+                item,
+            )
+        )
+
+    return "+".join(
+        dict.fromkeys(parts)
+    ) or "eng"
 
 
 def tesseract_available() -> bool:
