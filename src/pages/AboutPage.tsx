@@ -4,9 +4,7 @@ import {
   Target,
   Users2,
   Code2,
-  Sparkles,
   Network,
-  ArrowUpRight,
 } from "lucide-react";
 
 const teamMembers = [
@@ -125,6 +123,7 @@ export function AboutPage() {
         <div className="mt-12 rounded-[2rem] bg-ink-950 text-white p-8 md:p-12 relative overflow-hidden">
           {/* Decorative circles */}
           <div className="absolute -top-24 -right-24 w-72 h-72 rounded-full bg-white/[0.04]" />
+
           <div className="absolute -bottom-32 -left-20 w-80 h-80 rounded-full bg-white/[0.03]" />
 
           <div className="relative z-10">
@@ -143,6 +142,88 @@ export function AboutPage() {
             </p>
           </div>
         </div>
-      </section>
 
-      
+        {/* =========================================================
+            TEAM SECTION
+        ========================================================= */}
+        <div className="mt-20">
+          <div className="max-w-3xl">
+            <span className="section-eyebrow">OUR TEAM</span>
+
+            <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight mt-4 text-ink-950">
+              The people behind QuadraConverter.
+            </h2>
+
+            <p className="text-ink-500 mt-4 leading-7">
+              A focused team working together to create simple, reliable and
+              secure digital document experiences.
+            </p>
+          </div>
+
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6 mt-10">
+            {teamMembers.map((member) => {
+              const Icon = member.icon;
+
+              return (
+                <div
+                  key={member.name}
+                  className="card group overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:shadow-xl"
+                >
+                  {/* Team Image */}
+                  <div className="relative aspect-square overflow-hidden bg-brand-50">
+                    <img
+                      src={member.image}
+                      alt={member.name}
+                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                    />
+
+                    <div className="absolute top-4 right-4 w-10 h-10 rounded-xl bg-white/90 backdrop-blur-sm flex items-center justify-center shadow-sm">
+                      <Icon className="w-5 h-5 text-brand-700" />
+                    </div>
+                  </div>
+
+                  {/* Team Details */}
+                  <div className="p-6">
+                    <h3 className="font-bold text-lg text-ink-950">
+                      {member.name}
+                    </h3>
+
+                    <p className="text-sm font-semibold text-brand-700 mt-1">
+                      {member.role}
+                    </p>
+
+                    <p className="text-sm text-ink-500 leading-6 mt-4">
+                      {member.description}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* =========================================================
+            FINAL CTA
+        ========================================================= */}
+        <div className="mt-16 rounded-[2rem] border border-ink-100 bg-brand-50 p-8 md:p-12 text-center">
+          <h2 className="text-2xl md:text-3xl font-bold text-ink-950">
+            Simpler documents. Smarter workflows.
+          </h2>
+
+          <p className="text-ink-500 mt-4 max-w-2xl mx-auto leading-7">
+            QuadraConverter brings the essential tools you need into one
+            streamlined platform.
+          </p>
+
+          <a
+            href="/"
+            className="inline-flex items-center gap-2 mt-7 px-6 py-3 rounded-xl bg-brand-700 text-white font-semibold transition-all duration-300 hover:bg-brand-800 hover:-translate-y-0.5"
+          >
+            Explore QuadraConverter
+            <ArrowUpRight className="w-4 h-4" />
+          </a>
+        </div>
+      </section>
+    </div>
+  );
+}
