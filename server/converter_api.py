@@ -1989,20 +1989,17 @@ def translation_request(
     target_lang: str,
 ) -> str:
 
-    endpoint = os.getenv(
-        "TRANSLATION_API_URL"
+    endpoint = os.getenv("TRANSLATION_API_URL", "").strip()
+
+if not endpoint:
+    raise HTTPException(
+        status_code=503,
+        detail=(
+            "PDF translation is not configured. "
+            "Set TRANSLATION_API_URL in server/.env "
+            "and restart the conversion server."
+        ),
     )
-
-    if not endpoint:
-
-        raise HTTPException(
-            status_code=503,
-            detail=(
-                "TRANSLATION_API_URL is not "
-                "configured on the conversion server."
-            ),
-        )
-
     payload = json.dumps(
         {
             "q": text,
