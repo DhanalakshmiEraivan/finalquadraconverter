@@ -3,7 +3,8 @@ import { useAuth } from '@/lib/auth';
 
 import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
-
+import { AIFeaturePage } from '@/pages/AIFeaturePage';
+import { aiFeatures } from '@/data/tools';
 import { LandingPage } from '@/pages/LandingPage';
 import { ToolsPage } from '@/pages/ToolsPage';
 import { ToolWorkspace } from '@/pages/ToolWorkspace';
@@ -119,6 +120,22 @@ function App() {
         )}
 
       <main className="flex-1 min-w-0">
+        {route.name === 'ai' && (() => {
+  const feature = aiFeatures.find(
+    (item) => item.id === route.id
+  );
+
+  if (!feature) {
+    return <NotFound navigate={navigate} />;
+  }
+
+  return (
+    <AIFeaturePage
+      feature={feature}
+      navigate={navigate}
+    />
+  );
+})()}
 
         {route.name === 'auth' && (
           <AuthPage />
