@@ -1988,22 +1988,120 @@ def extract_pdf_text(
 # ============================================================
 
 
+# ============================================================
+# TRANSLATION ENGINE
+# ============================================================
+
 def translation_request(
     text: str,
     target_lang: str,
 ) -> str:
+    """
+    Translate text using one of these providers:
 
-    endpoint = os.getenv("TRANSLATION_API_URL", "").strip()
+    1. Google Cloud Translation v2
+       GOOGLE_TRANSLATE_API_KEY
 
-if not endpoint:
-    raise HTTPException(
-        status_code=503,
-        detail=(
-            "PDF translation is not configured. "
-            "Set TRANSLATION_API_URL in server/.env "
-            "and restart the conversion server."
-        ),
-    )
+    2. Generic JSON translation endpoint
+       TRANSLATION_API_URL
+
+    The Google provider is preferred because the PDF
+    reconstruction code only needs a normal translated string.
+    """
+
+    text = (text or "").strip()
+    target_lang = (target_lang or "").strip()
+
+    if not text:
+        return ""
+
+    if not target_lang:
+        raise HTTPException(
+            status_code=422,
+            detail="Target language is required.",
+        )
+
+    # --------------------------------------------------------
+    # Provider 1: Google Cloud Translation
+    # --------------------------------------------------------
+
+    google_key = os.getenv(
+        "GOOGLE_TRANSLATE_API_KEY",
+        "",
+    ).strip()
+
+    if google_key:
+        endpoint = (
+            "https://translation.googleapis.com/"
+            "language/translate/v2"
+        )
+
+        payload = json.dumps(
+            {
+                "q": text,
+                "target": target_lang,
+                "format": "text",
+            }
+        ).encode("utf-8")
+
+        request = urllib.request.Request(
+            f"{endpoint}?key={quote(google_key)}",
+            data=payload,
+            headers={
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            },
+            method="POST",
+        )
+
+        try:
+            with urllib.request.urlopen(
+                request,
+                timeout=60,
+            ) as response:
+
+                body = json.loads(
+                    response.read().decode("utf-8")
+                )
+
+            translated = (
+                body
+                .get("data", {})
+                .get("translations", [{}])[0]
+                .get("translatedText", "")
+            )
+
+            if translated:
+                return str(translated)
+
+        except Exception as exc:
+            raise HTTPException(
+                status_code=502,
+                detail=(
+                    "Google Translation failed: "
+                    f"{exc}"
+                ),
+            )
+
+    # --------------------------------------------------------
+    # Provider 2: Generic translation API
+    # --------------------------------------------------------
+
+    endpoint = os.getenv(
+        "TRANSLATION_API_URL",
+        "",
+    ).strip()
+
+    if not endpoint:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "No translation provider is configured. "
+                "Set GOOGLE_TRANSLATE_API_KEY or "
+                "TRANSLATION_API_URL in server/.env."
+            ),
+        )
+
     payload = json.dumps(
         {
             "q": text,
@@ -2011,62 +2109,53 @@ if not endpoint:
             "source": "auto",
             "format": "text",
         }
-    ).encode(
-        "utf-8"
-    )
+    ).encode("utf-8")
 
     request = urllib.request.Request(
         endpoint,
         data=payload,
         headers={
-            "Content-Type":
-                "application/json",
-            "Accept":
-                "application/json",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
         },
         method="POST",
     )
 
     try:
-
         with urllib.request.urlopen(
             request,
-            timeout=120,
+            timeout=60,
         ) as response:
 
             body = json.loads(
-                response.read().decode(
-                    "utf-8"
-                )
+                response.read().decode("utf-8")
             )
 
     except Exception as exc:
-
         raise HTTPException(
             status_code=502,
             detail=(
-                f"Translation service failed: "
-                f"{exc}"
+                f"Translation service failed: {exc}"
             ),
         )
 
     translated = (
-        body.get(
-            "translatedText"
-        )
-        or body.get(
-            "translation"
-        )
-        or body.get(
-            "text"
-        )
+        body.get("translatedText")
+        or body.get("translation")
+        or body.get("text")
         or ""
     )
 
-    return str(
-        translated
-    )
+    if not translated:
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "Translation provider returned "
+                "no translated text."
+            ),
+        )
 
+    return str(translated)
 
 # ============================================================
 # SEND EMAIL
