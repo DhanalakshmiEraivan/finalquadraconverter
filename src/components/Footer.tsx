@@ -71,7 +71,6 @@ export function Footer({ navigate }: Props) {
               <li><button onClick={() => navigate('/dashboard')} className="text-ink-600 hover:text-brand-600">Dashboard</button></li>
               <li><button onClick={() => navigate('/pricing')} className="text-ink-600 hover:text-brand-600">Pricing</button></li>
               <li><button onClick={() => navigate('/features')} className="text-ink-600 hover:text-brand-600">Features</button></li>
-              <li><button onClick={() => navigate('/about')} className="text-ink-600 hover:text-brand-600">About us</button></li>
               <li><button onClick={() => navigate('/security')} className="text-ink-600 hover:text-brand-600">Security</button></li>
               <li><button onClick={() => navigate('/signatures')} className="text-ink-600 hover:text-brand-600">Signatures</button></li>
               <li><button onClick={() => navigate('/admin')} className="text-ink-600 hover:text-brand-600">Admin</button></li>
