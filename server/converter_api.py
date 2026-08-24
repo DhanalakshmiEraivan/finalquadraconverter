@@ -2422,7 +2422,1617 @@ async def sign_pdf_endpoint(
 #
 # DO NOT CREATE ANOTHER @app.post("/convert") BELOW THIS.
 # ============================================================
+# ============================================================
+# QUADRA AI PDF ENGINE
+# ============================================================
 
+AI_BASE_URL = os.getenv(
+    "AI_BASE_URL",
+    "https://openrouter.ai/api/v1",
+).rstrip("/")
+
+AI_API_KEY = os.getenv(
+    "OPENROUTER_API_KEY",
+    "",
+).strip()
+
+AI_CHAT_MODEL = os.getenv(
+    "AI_CHAT_MODEL",
+    "openai/gpt-4o-mini",
+).strip()
+
+AI_TRANSLATION_MODEL = os.getenv(
+    "AI_TRANSLATION_MODEL",
+    "openai/gpt-4o-mini",
+).strip()
+
+AI_EMBEDDING_MODEL = os.getenv(
+    "AI_EMBEDDING_MODEL",
+    "openai/text-embedding-3-small",
+).strip()
+
+SUPABASE_URL = os.getenv(
+    "SUPABASE_URL",
+    "",
+).rstrip("/")
+
+SUPABASE_SERVICE_ROLE_KEY = os.getenv(
+    "SUPABASE_SERVICE_ROLE_KEY",
+    "",
+).strip()
+
+PDF_CHUNK_SIZE = int(
+    os.getenv(
+        "PDF_CHUNK_SIZE",
+        "1200",
+    )
+)
+
+PDF_CHUNK_OVERLAP = int(
+    os.getenv(
+        "PDF_CHUNK_OVERLAP",
+        "200",
+    )
+)
+
+PDF_RAG_TOP_K = int(
+    os.getenv(
+        "PDF_RAG_TOP_K",
+        "6",
+    )
+)
+
+
+def require_ai_config():
+
+    if not AI_API_KEY:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "OPENROUTER_API_KEY is not configured "
+                "on the conversion server."
+            ),
+        )
+
+
+def require_supabase_config():
+
+    if not SUPABASE_URL:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "SUPABASE_URL is not configured "
+                "on the conversion server."
+            ),
+        )
+
+    if not SUPABASE_SERVICE_ROLE_KEY:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "SUPABASE_SERVICE_ROLE_KEY is not configured "
+                "on the conversion server."
+            ),
+        )
+
+
+def supabase_headers():
+
+    require_supabase_config()
+
+    return {
+        "apikey": SUPABASE_SERVICE_ROLE_KEY,
+        "Authorization": (
+            f"Bearer {SUPABASE_SERVICE_ROLE_KEY}"
+        ),
+        "Content-Type": "application/json",
+        "Prefer": "return=representation",
+    }
+
+
+def sha256_file(
+    path: Path,
+) -> str:
+
+    digest = hashlib.sha256()
+
+    with path.open("rb") as handle:
+
+        while True:
+
+            chunk = handle.read(
+                1024 * 1024
+            )
+
+            if not chunk:
+                break
+
+            digest.update(chunk)
+
+    return digest.hexdigest()
+
+
+def chunk_text(
+    text: str,
+    chunk_size: int = PDF_CHUNK_SIZE,
+    overlap: int = PDF_CHUNK_OVERLAP,
+) -> list[str]:
+
+    cleaned = re.sub(
+        r"[ \t]+",
+        " ",
+        text,
+    )
+
+    cleaned = re.sub(
+        r"\n{3,}",
+        "\n\n",
+        cleaned,
+    ).strip()
+
+    if not cleaned:
+        return []
+
+    words = cleaned.split()
+
+    if not words:
+        return []
+
+    chunks: list[str] = []
+
+    current: list[str] = []
+    current_length = 0
+
+    for word in words:
+
+        word_length = len(word) + 1
+
+        if (
+            current
+            and current_length + word_length > chunk_size
+        ):
+
+            chunks.append(
+                " ".join(current).strip()
+            )
+
+            overlap_words: list[str] = []
+            overlap_length = 0
+
+            for previous in reversed(current):
+
+                if (
+                    overlap_length
+                    + len(previous)
+                    + 1
+                    > overlap
+                ):
+                    break
+
+                overlap_words.insert(
+                    0,
+                    previous,
+                )
+
+                overlap_length += (
+                    len(previous) + 1
+                )
+
+            current = overlap_words
+            current_length = overlap_length
+
+        current.append(word)
+        current_length += word_length
+
+    if current:
+        chunks.append(
+            " ".join(current).strip()
+        )
+
+    return [
+        value
+        for value in chunks
+        if len(value.strip()) >= 20
+    ]
+
+
+def extract_pdf_blocks_for_ai(
+    source: Path,
+    ocr_language: str = "eng",
+) -> list[dict[str, Any]]:
+
+    import fitz
+
+    pdf = _fitz_open(
+        source
+    )
+
+    blocks: list[dict[str, Any]] = []
+
+    try:
+
+        for page_index, page in enumerate(
+            pdf,
+            start=1,
+        ):
+
+            native_blocks = page.get_text(
+                "blocks"
+            )
+
+            native_text = (
+                page.get_text(
+                    "text"
+                )
+                or ""
+            ).strip()
+
+            useful_native = [
+                block
+                for block in native_blocks
+                if len(
+                    str(
+                        block[4]
+                        if len(block) > 4
+                        else ""
+                    ).strip()
+                ) >= 2
+            ]
+
+            if len(native_text) >= OCR_MIN_TEXT_CHARS:
+
+                for block in useful_native:
+
+                    text = str(
+                        block[4]
+                    ).strip()
+
+                    if not text:
+                        continue
+
+                    blocks.append(
+                        {
+                            "page": page_index,
+                            "text": text,
+                            "bbox": [
+                                float(block[0]),
+                                float(block[1]),
+                                float(block[2]),
+                                float(block[3]),
+                            ],
+                            "source": "native",
+                        }
+                    )
+
+                continue
+
+            if not tesseract_available():
+
+                continue
+
+            try:
+
+                pixmap, _ = render_page_image(
+                    page,
+                    OCR_DPI,
+                )
+
+                image = Image.open(
+                    BytesIO(
+                        pixmap.tobytes(
+                            "png"
+                        )
+                    )
+                )
+
+                data = pytesseract.image_to_data(
+                    image,
+                    lang=normalize_ocr_language(
+                        ocr_language
+                    ),
+                    output_type=(
+                        pytesseract.Output.DICT
+                    ),
+                )
+
+                scale = 72.0 / float(
+                    OCR_DPI
+                )
+
+                grouped: dict[
+                    tuple[int, int, int],
+                    list[tuple[str, int, int, int, int]]
+                ] = {}
+
+                count = len(
+                    data.get(
+                        "text",
+                        [],
+                    )
+                )
+
+                for i in range(count):
+
+                    value = str(
+                        data["text"][i]
+                        or ""
+                    ).strip()
+
+                    if not value:
+                        continue
+
+                    confidence = str(
+                        data.get(
+                            "conf",
+                            ["-1"] * count,
+                        )[i]
+                    )
+
+                    try:
+                        if float(confidence) < 20:
+                            continue
+                    except Exception:
+                        pass
+
+                    key = (
+                        int(
+                            data["block_num"][i]
+                        ),
+                        int(
+                            data["par_num"][i]
+                        ),
+                        int(
+                            data["line_num"][i]
+                        ),
+                    )
+
+                    grouped.setdefault(
+                        key,
+                        [],
+                    ).append(
+                        (
+                            value,
+                            int(
+                                data["left"][i]
+                            ),
+                            int(
+                                data["top"][i]
+                            ),
+                            int(
+                                data["width"][i]
+                            ),
+                            int(
+                                data["height"][i]
+                            ),
+                        )
+                    )
+
+                for words in grouped.values():
+
+                    if not words:
+                        continue
+
+                    text = " ".join(
+                        item[0]
+                        for item in words
+                    ).strip()
+
+                    if not text:
+                        continue
+
+                    left = min(
+                        item[1]
+                        for item in words
+                    )
+
+                    top = min(
+                        item[2]
+                        for item in words
+                    )
+
+                    right = max(
+                        item[1] + item[3]
+                        for item in words
+                    )
+
+                    bottom = max(
+                        item[2] + item[4]
+                        for item in words
+                    )
+
+                    blocks.append(
+                        {
+                            "page": page_index,
+                            "text": text,
+                            "bbox": [
+                                left * scale,
+                                top * scale,
+                                right * scale,
+                                bottom * scale,
+                            ],
+                            "source": "ocr",
+                        }
+                    )
+
+            except Exception as exc:
+
+                print(
+                    "[QuadraAI] OCR failed "
+                    f"on page {page_index}: {exc}"
+                )
+
+    finally:
+
+        pdf.close()
+
+    return blocks
+
+
+def openrouter_request(
+    endpoint: str,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+
+    require_ai_config()
+
+    headers = {
+        "Authorization": (
+            f"Bearer {AI_API_KEY}"
+        ),
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "HTTP-Referer": os.getenv(
+            "AI_HTTP_REFERER",
+            "https://quadraconverter.in",
+        ),
+        "X-Title": "QuadraConverter",
+    }
+
+    try:
+
+        response = httpx.post(
+            f"{AI_BASE_URL}/{endpoint.lstrip('/')}",
+            headers=headers,
+            json=payload,
+            timeout=180,
+        )
+
+    except httpx.TimeoutException:
+
+        raise HTTPException(
+            status_code=504,
+            detail=(
+                "AI service timed out. "
+                "Please try again."
+            ),
+        )
+
+    except httpx.HTTPError as exc:
+
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                f"AI service connection failed: {exc}"
+            ),
+        )
+
+    if response.status_code >= 400:
+
+        try:
+            body = response.json()
+            detail = (
+                body.get("error", {}).get("message")
+                if isinstance(
+                    body.get("error"),
+                    dict,
+                )
+                else body.get("error")
+            )
+        except Exception:
+            detail = response.text
+
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                str(detail)
+                or "AI service returned an error."
+            ),
+        )
+
+    try:
+        return response.json()
+    except Exception:
+
+        raise HTTPException(
+            status_code=502,
+            detail="AI service returned invalid JSON.",
+        )
+
+
+def create_embedding(
+    text: str,
+) -> list[float]:
+
+    payload = {
+        "model": AI_EMBEDDING_MODEL,
+        "input": text,
+    }
+
+    body = openrouter_request(
+        "/embeddings",
+        payload,
+    )
+
+    data = body.get(
+        "data"
+    )
+
+    if not isinstance(
+        data,
+        list,
+    ) or not data:
+
+        raise HTTPException(
+            status_code=502,
+            detail="Embedding service returned no vector.",
+        )
+
+    embedding = data[0].get(
+        "embedding"
+    )
+
+    if not isinstance(
+        embedding,
+        list,
+    ):
+
+        raise HTTPException(
+            status_code=502,
+            detail="Embedding service returned an invalid vector.",
+        )
+
+    return [
+        float(value)
+        for value in embedding
+    ]
+
+
+def ai_chat_completion(
+    messages: list[dict[str, str]],
+    model: str = AI_CHAT_MODEL,
+    temperature: float = 0.1,
+) -> str:
+
+    payload = {
+        "model": model,
+        "messages": messages,
+        "temperature": temperature,
+    }
+
+    body = openrouter_request(
+        "/chat/completions",
+        payload,
+    )
+
+    choices = body.get(
+        "choices"
+    )
+
+    if not choices:
+        raise HTTPException(
+            status_code=502,
+            detail="AI model returned no answer.",
+        )
+
+    message = (
+        choices[0]
+        .get("message", {})
+    )
+
+    content = message.get(
+        "content"
+    )
+
+    if not isinstance(
+        content,
+        str,
+    ):
+
+        raise HTTPException(
+            status_code=502,
+            detail="AI model returned an invalid answer.",
+        )
+
+    return content.strip()
+
+
+def supabase_get_document_by_hash(
+    file_hash: str,
+) -> dict[str, Any] | None:
+
+    require_supabase_config()
+
+    response = httpx.get(
+        f"{SUPABASE_URL}/rest/v1/pdf_documents",
+        headers=supabase_headers(),
+        params={
+            "file_hash": f"eq.{file_hash}",
+            "select": "id,file_hash,file_name,page_count",
+            "limit": "1",
+        },
+        timeout=60,
+    )
+
+    if response.status_code >= 400:
+
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "Could not read PDF document index "
+                f"from Supabase: {response.text}"
+            ),
+        )
+
+    rows = response.json()
+
+    return rows[0] if rows else None
+
+
+def supabase_create_document(
+    file_hash: str,
+    file_name: str,
+    page_count: int,
+) -> dict[str, Any]:
+
+    require_supabase_config()
+
+    response = httpx.post(
+        f"{SUPABASE_URL}/rest/v1/pdf_documents",
+        headers=supabase_headers(),
+        json={
+            "file_hash": file_hash,
+            "file_name": file_name,
+            "page_count": page_count,
+        },
+        timeout=60,
+    )
+
+    if response.status_code >= 400:
+
+        if response.status_code == 409:
+
+            existing = (
+                supabase_get_document_by_hash(
+                    file_hash
+                )
+            )
+
+            if existing:
+                return existing
+
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "Could not create PDF document "
+                f"in Supabase: {response.text}"
+            ),
+        )
+
+    rows = response.json()
+
+    if not rows:
+        raise HTTPException(
+            status_code=502,
+            detail="Supabase did not return the PDF document.",
+        )
+
+    return rows[0]
+
+
+def supabase_insert_chunks(
+    rows: list[dict[str, Any]],
+):
+
+    if not rows:
+        return
+
+    response = httpx.post(
+        f"{SUPABASE_URL}/rest/v1/pdf_chunks",
+        headers=supabase_headers(),
+        json=rows,
+        timeout=180,
+    )
+
+    if response.status_code >= 400:
+
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "Could not store PDF embeddings "
+                f"in Supabase: {response.text}"
+            ),
+        )
+
+
+def ensure_pdf_indexed(
+    source: Path,
+    original_filename: str,
+    ocr_language: str = "eng",
+) -> tuple[str, int]:
+
+    file_hash = sha256_file(
+        source
+    )
+
+    existing = (
+        supabase_get_document_by_hash(
+            file_hash
+        )
+    )
+
+    if existing:
+
+        return (
+            str(existing["id"]),
+            int(
+                existing.get(
+                    "page_count",
+                    0,
+                )
+            ),
+        )
+
+    blocks = extract_pdf_blocks_for_ai(
+        source,
+        ocr_language,
+    )
+
+    if not blocks:
+
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "No readable text was found in this PDF. "
+                "The document may contain unsupported scans."
+            ),
+        )
+
+    import fitz
+
+    pdf = _fitz_open(
+        source
+    )
+
+    try:
+        page_count = pdf.page_count
+    finally:
+        pdf.close()
+
+    document = (
+        supabase_create_document(
+            file_hash,
+            safe_filename(
+                original_filename,
+                "document.pdf",
+            ),
+            page_count,
+        )
+    )
+
+    document_id = str(
+        document["id"]
+    )
+
+    chunks: list[dict[str, Any]] = []
+
+    chunk_index = 0
+
+    for block in blocks:
+
+        pieces = chunk_text(
+            block["text"]
+        )
+
+        for piece in pieces:
+
+            embedding = create_embedding(
+                piece
+            )
+
+            chunks.append(
+                {
+                    "document_id": document_id,
+                    "chunk_index": chunk_index,
+                    "page_number": int(
+                        block["page"]
+                    ),
+                    "content": piece,
+                    "embedding": embedding,
+                }
+            )
+
+            chunk_index += 1
+
+            if len(chunks) >= 20:
+
+                supabase_insert_chunks(
+                    chunks
+                )
+
+                chunks = []
+
+    if chunks:
+        supabase_insert_chunks(
+            chunks
+        )
+
+    return (
+        document_id,
+        page_count,
+    )
+
+
+def supabase_match_chunks(
+    document_id: str,
+    query_embedding: list[float],
+    top_k: int = PDF_RAG_TOP_K,
+) -> list[dict[str, Any]]:
+
+    require_supabase_config()
+
+    response = httpx.post(
+        f"{SUPABASE_URL}/rest/v1/rpc/match_pdf_chunks",
+        headers=supabase_headers(),
+        json={
+            "query_embedding": query_embedding,
+            "match_document_id": document_id,
+            "match_count": top_k,
+            "min_similarity": 0.12,
+        },
+        timeout=120,
+    )
+
+    if response.status_code >= 400:
+
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "Vector search failed: "
+                f"{response.text}"
+            ),
+        )
+
+    result = response.json()
+
+    if not isinstance(
+        result,
+        list,
+    ):
+        return []
+
+    return result
+
+
+def chat_with_pdf_document(
+    source: Path,
+    original_filename: str,
+    question: str,
+    ocr_language: str = "eng",
+) -> str:
+
+    question = question.strip()
+
+    if not question:
+
+        raise HTTPException(
+            status_code=400,
+            detail="Please enter a question about the PDF.",
+        )
+
+    document_id, _ = ensure_pdf_indexed(
+        source,
+        original_filename,
+        ocr_language,
+    )
+
+    question_embedding = create_embedding(
+        question
+    )
+
+    matches = supabase_match_chunks(
+        document_id,
+        question_embedding,
+        PDF_RAG_TOP_K,
+    )
+
+    if not matches:
+
+        return (
+            "I could not find relevant information "
+            "in the uploaded PDF."
+        )
+
+    context_parts: list[str] = []
+
+    for index, match in enumerate(
+        matches,
+        start=1,
+    ):
+
+        page = match.get(
+            "page_number"
+        )
+
+        content = str(
+            match.get(
+                "content",
+                "",
+            )
+        ).strip()
+
+        if not content:
+            continue
+
+        context_parts.append(
+            (
+                f"[Source {index} | "
+                f"Page {page or '?'}]\n"
+                f"{content}"
+            )
+        )
+
+    context = "\n\n".join(
+        context_parts
+    )
+
+    system_prompt = """
+You are QuadraConverter PDF Assistant.
+
+Answer questions ONLY from the supplied PDF context.
+
+Rules:
+1. Do not invent information.
+2. If the answer is not contained in the context, say that it was not found in the PDF.
+3. Be clear and concise.
+4. Preserve important numbers, dates, names and technical terminology.
+5. Mention the relevant page number when possible.
+6. Do not use outside knowledge to fill missing information.
+"""
+
+    user_prompt = (
+        "PDF CONTEXT:\n\n"
+        f"{context}\n\n"
+        "QUESTION:\n"
+        f"{question}"
+    )
+
+    return ai_chat_completion(
+        [
+            {
+                "role": "system",
+                "content": system_prompt.strip(),
+            },
+            {
+                "role": "user",
+                "content": user_prompt,
+            },
+        ],
+        model=AI_CHAT_MODEL,
+        temperature=0.05,
+    )
+
+
+# ============================================================
+# PDF TRANSLATION WITH LAYOUT PRESERVATION
+# ============================================================
+
+INDIC_LANGUAGE_NAMES = {
+    "english": "English",
+    "en": "English",
+
+    "hindi": "Hindi",
+    "hi": "Hindi",
+
+    "tamil": "Tamil",
+    "ta": "Tamil",
+
+    "telugu": "Telugu",
+    "te": "Telugu",
+
+    "malayalam": "Malayalam",
+    "ml": "Malayalam",
+
+    "kannada": "Kannada",
+    "kn": "Kannada",
+
+    "marathi": "Marathi",
+    "mr": "Marathi",
+
+    "bengali": "Bengali",
+    "bn": "Bengali",
+
+    "gujarati": "Gujarati",
+    "gu": "Gujarati",
+
+    "punjabi": "Punjabi",
+    "pa": "Punjabi",
+
+    "odia": "Odia",
+    "or": "Odia",
+
+    "assamese": "Assamese",
+    "as": "Assamese",
+
+    "urdu": "Urdu",
+    "ur": "Urdu",
+
+    "nepali": "Nepali",
+    "ne": "Nepali",
+
+    "sanskrit": "Sanskrit",
+    "sa": "Sanskrit",
+
+    "french": "French",
+    "fr": "French",
+
+    "german": "German",
+    "de": "German",
+
+    "spanish": "Spanish",
+    "es": "Spanish",
+
+    "italian": "Italian",
+    "it": "Italian",
+
+    "portuguese": "Portuguese",
+    "pt": "Portuguese",
+}
+
+
+def language_display_name(
+    language: str,
+) -> str:
+
+    value = (
+        language
+        or "English"
+    ).strip().lower()
+
+    return INDIC_LANGUAGE_NAMES.get(
+        value,
+        language.strip() or "English",
+    )
+
+
+def translate_text_ai(
+    text: str,
+    target_language: str,
+) -> str:
+
+    target = language_display_name(
+        target_language
+    )
+
+    source_language = (
+        "auto-detect"
+    )
+
+    prompt = f"""
+Translate the following document text into {target}.
+
+Source language: {source_language}
+
+Requirements:
+- Preserve the exact meaning.
+- Preserve numbers, dates, names, units and technical terms.
+- Do not summarize.
+- Do not add explanations.
+- Keep paragraph structure.
+- Do not translate proper brand/product names unless appropriate.
+- For Indian languages, use natural native grammar and terminology.
+- Return only the translation.
+
+TEXT:
+{text}
+"""
+
+    return ai_chat_completion(
+        [
+            {
+                "role": "system",
+                "content": (
+                    "You are a professional document "
+                    "translation engine."
+                ),
+            },
+            {
+                "role": "user",
+                "content": prompt.strip(),
+            },
+        ],
+        model=AI_TRANSLATION_MODEL,
+        temperature=0.05,
+    )
+
+
+def find_pdf_font(
+    target_language: str,
+) -> str | None:
+
+    language = (
+        target_language
+        or ""
+    ).strip().lower()
+
+    candidates: list[str] = []
+
+    if language in {
+        "tamil",
+        "ta",
+    }:
+        candidates = [
+            "/usr/share/fonts/truetype/noto/NotoSansTamil-Regular.ttf",
+            "/usr/share/fonts/opentype/noto/NotoSansTamil-Regular.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSansTamilUI-Regular.ttf",
+        ]
+
+    elif language in {
+        "hindi",
+        "hi",
+        "marathi",
+        "mr",
+        "nepali",
+        "ne",
+        "sanskrit",
+        "sa",
+    }:
+        candidates = [
+            "/usr/share/fonts/truetype/noto/NotoSansDevanagari-Regular.ttf",
+            "/usr/share/fonts/opentype/noto/NotoSansDevanagari-Regular.ttf",
+        ]
+
+    elif language in {
+        "telugu",
+        "te",
+    }:
+        candidates = [
+            "/usr/share/fonts/truetype/noto/NotoSansTelugu-Regular.ttf",
+            "/usr/share/fonts/opentype/noto/NotoSansTelugu-Regular.ttf",
+        ]
+
+    elif language in {
+        "kannada",
+        "kn",
+    }:
+        candidates = [
+            "/usr/share/fonts/truetype/noto/NotoSansKannada-Regular.ttf",
+            "/usr/share/fonts/opentype/noto/NotoSansKannada-Regular.ttf",
+        ]
+
+    elif language in {
+        "malayalam",
+        "ml",
+    }:
+        candidates = [
+            "/usr/share/fonts/truetype/noto/NotoSansMalayalam-Regular.ttf",
+            "/usr/share/fonts/opentype/noto/NotoSansMalayalam-Regular.ttf",
+        ]
+
+    elif language in {
+        "bengali",
+        "bn",
+        "assamese",
+        "as",
+    }:
+        candidates = [
+            "/usr/share/fonts/truetype/noto/NotoSansBengali-Regular.ttf",
+            "/usr/share/fonts/opentype/noto/NotoSansBengali-Regular.ttf",
+        ]
+
+    elif language in {
+        "gujarati",
+        "gu",
+    }:
+        candidates = [
+            "/usr/share/fonts/truetype/noto/NotoSansGujarati-Regular.ttf",
+            "/usr/share/fonts/opentype/noto/NotoSansGujarati-Regular.ttf",
+        ]
+
+    elif language in {
+        "punjabi",
+        "pa",
+    }:
+        candidates = [
+            "/usr/share/fonts/truetype/noto/NotoSansGurmukhi-Regular.ttf",
+            "/usr/share/fonts/opentype/noto/NotoSansGurmukhi-Regular.ttf",
+        ]
+
+    elif language in {
+        "odia",
+        "or",
+    }:
+        candidates = [
+            "/usr/share/fonts/truetype/noto/NotoSansOriya-Regular.ttf",
+            "/usr/share/fonts/opentype/noto/NotoSansOriya-Regular.ttf",
+        ]
+
+    elif language in {
+        "urdu",
+        "ur",
+    }:
+        candidates = [
+            "/usr/share/fonts/truetype/noto/NotoNaskhArabic-Regular.ttf",
+            "/usr/share/fonts/opentype/noto/NotoSansArabic-Regular.ttf",
+        ]
+
+    candidates.extend(
+        [
+            "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+            "/usr/share/fonts/opentype/noto/NotoSans-Regular.ttf",
+        ]
+    )
+
+    for candidate in candidates:
+
+        if Path(candidate).exists():
+            return candidate
+
+    return None
+
+
+def translate_pdf_with_layout(
+    source: Path,
+    output: Path,
+    target_language: str,
+    ocr_language: str = "eng",
+):
+
+    import fitz
+
+    pdf = _fitz_open(
+        source
+    )
+
+    try:
+
+        font_file = find_pdf_font(
+            target_language
+        )
+
+        for page in pdf:
+
+            blocks = page.get_text(
+                "blocks"
+            )
+
+            native_text = (
+                page.get_text(
+                    "text"
+                )
+                or ""
+            ).strip()
+
+            if len(native_text) < OCR_MIN_TEXT_CHARS:
+
+                if tesseract_available():
+
+                    try:
+
+                        pixmap, _ = render_page_image(
+                            page,
+                            OCR_DPI,
+                        )
+
+                        image = Image.open(
+                            BytesIO(
+                                pixmap.tobytes(
+                                    "png"
+                                )
+                            )
+                        )
+
+                        data = pytesseract.image_to_data(
+                            image,
+                            lang=normalize_ocr_language(
+                                ocr_language
+                            ),
+                            output_type=(
+                                pytesseract.Output.DICT
+                            ),
+                        )
+
+                        scale = 72.0 / float(
+                            OCR_DPI
+                        )
+
+                        for i in range(
+                            len(
+                                data.get(
+                                    "text",
+                                    [],
+                                )
+                            )
+                        ):
+
+                            value = str(
+                                data["text"][i]
+                                or ""
+                            ).strip()
+
+                            if not value:
+                                continue
+
+                            left = (
+                                float(
+                                    data["left"][i]
+                                )
+                                * scale
+                            )
+
+                            top = (
+                                float(
+                                    data["top"][i]
+                                )
+                                * scale
+                            )
+
+                            width = (
+                                float(
+                                    data["width"][i]
+                                )
+                                * scale
+                            )
+
+                            height = (
+                                float(
+                                    data["height"][i]
+                                )
+                                * scale
+                            )
+
+                            rect = fitz.Rect(
+                                left,
+                                top,
+                                left + width,
+                                top + height,
+                            )
+
+                            translated = (
+                                translate_text_ai(
+                                    value,
+                                    target_language,
+                                )
+                            )
+
+                            page.add_redact_annot(
+                                rect,
+                                fill=(1, 1, 1),
+                            )
+
+                            page.apply_redactions()
+
+                            fontsize = max(
+                                6,
+                                min(
+                                    18,
+                                    height * 0.72,
+                                ),
+                            )
+
+                            if font_file:
+
+                                page.insert_textbox(
+                                    rect,
+                                    translated,
+                                    fontfile=font_file,
+                                    fontsize=fontsize,
+                                    color=(0, 0, 0),
+                                    align=0,
+                                )
+
+                            else:
+
+                                page.insert_textbox(
+                                    rect,
+                                    translated,
+                                    fontsize=fontsize,
+                                    color=(0, 0, 0),
+                                    align=0,
+                                )
+
+                    except Exception as exc:
+
+                        print(
+                            "[QuadraAI] OCR translation "
+                            f"failed: {exc}"
+                        )
+
+                continue
+
+            for block in blocks:
+
+                if len(block) < 5:
+                    continue
+
+                original = str(
+                    block[4]
+                ).strip()
+
+                if not original:
+                    continue
+
+                rect = fitz.Rect(
+                    block[0],
+                    block[1],
+                    block[2],
+                    block[3],
+                )
+
+                if rect.width <= 1 or rect.height <= 1:
+                    continue
+
+                translated = (
+                    translate_text_ai(
+                        original,
+                        target_language,
+                    )
+                )
+
+                if not translated:
+                    continue
+
+                page.add_redact_annot(
+                    rect,
+                    fill=(1, 1, 1),
+                )
+
+            page.apply_redactions()
+
+            for block in blocks:
+
+                if len(block) < 5:
+                    continue
+
+                original = str(
+                    block[4]
+                ).strip()
+
+                if not original:
+                    continue
+
+                rect = fitz.Rect(
+                    block[0],
+                    block[1],
+                    block[2],
+                    block[3],
+                )
+
+                translated = (
+                    translate_text_ai(
+                        original,
+                        target_language,
+                    )
+                )
+
+                if not translated:
+                    continue
+
+                estimated_font = max(
+                    6,
+                    min(
+                        18,
+                        rect.height * 0.65,
+                    ),
+                )
+
+                if font_file:
+
+                    page.insert_textbox(
+                        rect,
+                        translated,
+                        fontfile=font_file,
+                        fontsize=estimated_font,
+                        color=(0, 0, 0),
+                        align=0,
+                    )
+
+                else:
+
+                    page.insert_textbox(
+                        rect,
+                        translated,
+                        fontsize=estimated_font,
+                        color=(0, 0, 0),
+                        align=0,
+                    )
+
+        pdf.save(
+            str(output),
+            garbage=4,
+            deflate=True,
+            clean=True,
+        )
+
+    finally:
+
+        pdf.close()
+
+
+# ============================================================
+# PDF AI CHAT ROUTE
+# ============================================================
+
+
+@app.post(
+    "/pdf-chat"
+)
+async def pdf_chat(
+    file: UploadFile = File(...),
+    question: str = Form(...),
+    language: str = Form("eng"),
+):
+
+    work = Path(
+        tempfile.mkdtemp(
+            prefix="quadra-pdf-chat-"
+        )
+    )
+
+    try:
+
+        source = save_upload(
+            file,
+            work,
+            ALLOWED_PDF,
+        )
+
+        answer = chat_with_pdf_document(
+            source,
+            file.filename or "document.pdf",
+            question,
+            language,
+        )
+
+        output = (
+            work
+            / "pdf-answer.txt"
+        )
+
+        output.write_text(
+            answer,
+            encoding="utf-8",
+        )
+
+        return file_response(
+            output,
+            "text/plain; charset=utf-8",
+            work,
+            "Quadra AI RAG + Supabase pgvector",
+        )
+
+    except HTTPException:
+
+        cleanup(work)
+        raise
+
+    except Exception as exc:
+
+        cleanup(work)
+
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "PDF chat failed: "
+                f"{exc}"
+            ),
+        )
+
+    finally:
+
+        try:
+            await file.close()
+        except Exception:
+            pass
 
 @app.post(
     "/convert"
