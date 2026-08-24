@@ -1,5 +1,3 @@
-
-
 fastapi>=0.115,<1
 uvicorn[standard]>=0.30,<1
 python-multipart>=0.0.9,<1
@@ -13,8 +11,9 @@ python-pptx>=1.0,<2
 pytesseract>=0.3.13,<1
 Pillow>=10,<13
 
+httpx>=0.27,<1
+
 resend>=2.15,<3
 
-# Cryptographic PDF signing
 cryptography>=43,<46
 pyHanko>=0.30,<1
