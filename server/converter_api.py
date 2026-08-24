@@ -2156,6 +2156,470 @@ def translation_request(
         )
 
     return str(translated)
+# ============================================================
+# PDF TRANSLATION WITH LAYOUT PRESERVATION
+# ============================================================
+
+def translate_pdf_preserve_layout(
+    source: Path,
+    output: Path,
+    target_language: str,
+    ocr_language: str = "eng",
+) -> Path:
+    """
+    Translate a PDF while preserving page dimensions,
+    approximate text coordinates, font sizes and document
+    structure.
+
+    Native PDFs:
+        PDF text blocks are translated directly.
+
+    Scanned PDFs:
+        OCR coordinates are used as a fallback.
+
+    The original PDF is never overwritten.
+    """
+
+    import fitz
+
+    source_doc = _fitz_open(source)
+
+    try:
+        output_doc = fitz.open()
+
+        for page_number, source_page in enumerate(
+            source_doc,
+            start=1,
+        ):
+
+            page_width = source_page.rect.width
+            page_height = source_page.rect.height
+
+            # ------------------------------------------------
+            # Get native text blocks
+            # ------------------------------------------------
+
+            blocks = (
+                source_page.get_text(
+                    "dict",
+                    sort=True,
+                )
+                or {}
+            ).get(
+                "blocks",
+                []
+            )
+
+            text_blocks = []
+
+            for block in blocks:
+
+                if block.get("type") != 0:
+                    continue
+
+                lines = block.get(
+                    "lines",
+                    [],
+                )
+
+                spans = []
+
+                for line in lines:
+                    for span in line.get(
+                        "spans",
+                        [],
+                    ):
+
+                        text = (
+                            span.get(
+                                "text",
+                                "",
+                            )
+                            or ""
+                        ).strip()
+
+                        if text:
+                            spans.append(
+                                span
+                            )
+
+                if not spans:
+                    continue
+
+                bbox = block.get(
+                    "bbox"
+                )
+
+                if not bbox:
+                    continue
+
+                text = " ".join(
+                    (
+                        span.get(
+                            "text",
+                            "",
+                        )
+                        or ""
+                    ).strip()
+                    for span in spans
+                ).strip()
+
+                if not text:
+                    continue
+
+                font_sizes = [
+                    float(
+                        span.get(
+                            "size",
+                            10,
+                        )
+                    )
+                    for span in spans
+                    if span.get("size")
+                ]
+
+                font_size = (
+                    sum(font_sizes)
+                    / len(font_sizes)
+                    if font_sizes
+                    else 10.0
+                )
+
+                text_blocks.append(
+                    {
+                        "bbox": bbox,
+                        "text": text,
+                        "font_size": max(
+                            6.0,
+                            min(
+                                32.0,
+                                font_size,
+                            ),
+                        ),
+                    }
+                )
+
+            # ------------------------------------------------
+            # If native text is unavailable, use OCR
+            # ------------------------------------------------
+
+            if not text_blocks:
+
+                try:
+                    ocr_words = run_ocr(
+                        source_page,
+                        normalize_ocr_language(
+                            ocr_language
+                        ),
+                    )
+
+                    # Group OCR words by nearby lines.
+                    grouped = {}
+
+                    for word in ocr_words:
+                        x0 = float(
+                            word.get("x0", 0)
+                        )
+                        y0 = float(
+                            word.get("y0", 0)
+                        )
+                        x1 = float(
+                            word.get("x1", 0)
+                        )
+                        y1 = float(
+                            word.get("y1", 0)
+                        )
+
+                        line_key = round(
+                            y0 / 5
+                        ) * 5
+
+                        grouped.setdefault(
+                            line_key,
+                            [],
+                        ).append(
+                            word
+                        )
+
+                    for line_words in grouped.values():
+
+                        line_words.sort(
+                            key=lambda item:
+                            float(
+                                item.get(
+                                    "x0",
+                                    0,
+                                )
+                            )
+                        )
+
+                        if not line_words:
+                            continue
+
+                        text = " ".join(
+                            str(
+                                item.get(
+                                    "text",
+                                    "",
+                                )
+                            ).strip()
+                            for item in line_words
+                            if str(
+                                item.get(
+                                    "text",
+                                    "",
+                                )
+                            ).strip()
+                        ).strip()
+
+                        if not text:
+                            continue
+
+                        x0 = min(
+                            float(
+                                item.get(
+                                    "x0",
+                                    0,
+                                )
+                            )
+                            for item in line_words
+                        )
+
+                        y0 = min(
+                            float(
+                                item.get(
+                                    "y0",
+                                    0,
+                                )
+                            )
+                            for item in line_words
+                        )
+
+                        x1 = max(
+                            float(
+                                item.get(
+                                    "x1",
+                                    0,
+                                )
+                            )
+                            for item in line_words
+                        )
+
+                        y1 = max(
+                            float(
+                                item.get(
+                                    "y1",
+                                    0,
+                                )
+                            )
+                            for item in line_words
+                        )
+
+                        text_blocks.append(
+                            {
+                                "bbox": (
+                                    x0,
+                                    y0,
+                                    x1,
+                                    y1,
+                                ),
+                                "text": text,
+                                "font_size": max(
+                                    6,
+                                    min(
+                                        24,
+                                        (
+                                            y1 - y0
+                                        )
+                                        * 0.85,
+                                    ),
+                                ),
+                            }
+                        )
+
+                except HTTPException:
+                    raise
+
+                except Exception:
+                    # If OCR is unavailable, preserve the page
+                    # rather than producing a broken PDF.
+                    text_blocks = []
+
+            # ------------------------------------------------
+            # Create translated page
+            # ------------------------------------------------
+
+            new_page = output_doc.new_page(
+                width=page_width,
+                height=page_height,
+            )
+
+            # Preserve original page graphics/images.
+            new_page.show_pdf_page(
+                new_page.rect,
+                source_doc,
+                page_number - 1,
+            )
+
+            # ------------------------------------------------
+            # Translate blocks
+            # ------------------------------------------------
+
+            for block in text_blocks:
+
+                bbox = block["bbox"]
+                original_text = block["text"]
+
+                translated_text = (
+                    translation_request(
+                        original_text,
+                        target_language,
+                    )
+                ).strip()
+
+                if not translated_text:
+                    continue
+
+                rect = fitz.Rect(
+                    bbox
+                )
+
+                # Give translated languages slightly more room.
+                padding = max(
+                    1.0,
+                    min(
+                        4.0,
+                        rect.height * 0.12,
+                    ),
+                )
+
+                erase_rect = fitz.Rect(
+                    rect.x0 - padding,
+                    rect.y0 - padding,
+                    rect.x1 + padding,
+                    rect.y1 + padding,
+                )
+
+                # ------------------------------------------------
+                # Cover original text.
+                #
+                # NOTE:
+                # This is safe for normal white document
+                # backgrounds. Complex background artwork may
+                # need a raster/inpainting workflow.
+                # ------------------------------------------------
+
+                new_page.draw_rect(
+                    erase_rect,
+                    color=(1, 1, 1),
+                    fill=(1, 1, 1),
+                    width=0,
+                    overlay=True,
+                )
+
+                # ------------------------------------------------
+                # Insert translated text.
+                # ------------------------------------------------
+
+                font_size = float(
+                    block.get(
+                        "font_size",
+                        10,
+                    )
+                )
+
+                # Translated text can become longer than the
+                # original. Reduce size until it fits.
+                current_size = font_size
+
+                inserted = False
+
+                while current_size >= 6:
+
+                    result = new_page.insert_textbox(
+                        rect,
+                        translated_text,
+                        fontsize=current_size,
+                        fontname="helv",
+                        color=(0, 0, 0),
+                        align=0,
+                        overlay=True,
+                    )
+
+                    if result >= 0:
+                        inserted = True
+                        break
+
+                    current_size -= 0.75
+
+                # If it still doesn't fit, use the smallest
+                # readable size and allow the text box to expand
+                # slightly vertically.
+                if not inserted:
+
+                    expanded_rect = fitz.Rect(
+                        rect.x0,
+                        rect.y0,
+                        rect.x1,
+                        min(
+                            page_height - 2,
+                            rect.y1
+                            + max(
+                                8,
+                                rect.height,
+                            ),
+                        ),
+                    )
+
+                    new_page.insert_textbox(
+                        expanded_rect,
+                        translated_text,
+                        fontsize=6,
+                        fontname="helv",
+                        color=(0, 0, 0),
+                        align=0,
+                        overlay=True,
+                    )
+
+        # ----------------------------------------------------
+        # Metadata
+        # ----------------------------------------------------
+
+        metadata = dict(
+            output_doc.metadata or {}
+        )
+
+        metadata["title"] = (
+            f"Translated - "
+            f"{source.stem}"
+        )
+
+        metadata["subject"] = (
+            f"Translated to "
+            f"{target_language}"
+        )
+
+        metadata["creator"] = (
+            "QuadraConverter"
+        )
+
+        output_doc.set_metadata(
+            metadata
+        )
+
+        output_doc.save(
+            output,
+            garbage=4,
+            deflate=True,
+            clean=True,
+        )
+
+        output_doc.close()
+
+        return output
+
+    finally:
+        source_doc.close()
 
 # ============================================================
 # SEND EMAIL
@@ -4542,46 +5006,68 @@ async def convert(
         # PDF TRANSLATE
         # ====================================================
 
-        if operation == "pdf-translate":
+        # ====================================================
+# PDF TRANSLATE
+# ====================================================
 
-            source = save_upload(
-                file,
-                work,
-                ALLOWED_PDF,
-            )
+if operation == "pdf-translate":
 
-            target_language = (
-                targetLang
-                or "en"
-            ).strip()
+    source = save_upload(
+        file,
+        work,
+        ALLOWED_PDF,
+    )
 
-            if not target_language:
+    target_language = (
+        targetLang
+        or "en"
+    ).strip().lower()
 
-                raise HTTPException(
-                    status_code=400,
-                    detail=(
-                        "Please select a target language."
-                    ),
-                )
+    if not target_language:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Please select a target language."
+            ),
+        )
 
-            output = (
-                work
-                / f"{source.stem}-translated.pdf"
-            )
+    output = (
+        work
+        / f"{source.stem}-translated.pdf"
+    )
 
-            translate_pdf_with_layout(
-                source,
-                output,
-                target_language,
-                language,
-            )
+    translate_pdf_preserve_layout(
+        source=source,
+        output=output,
+        target_language=target_language,
+        ocr_language=(
+            language
+            or "eng"
+        ),
+    )
 
-            return file_response(
-                output,
-                "application/pdf",
-                work,
-                "Quadra AI + PyMuPDF + OCR",
-            )
+    if not output.exists():
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Translated PDF was not created."
+            ),
+        )
+
+    if output.stat().st_size < 100:
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Translated PDF appears to be empty."
+            ),
+        )
+
+    return file_response(
+        output,
+        "application/pdf",
+        work,
+        "QuadraConverter PDF Translation Engine",
+    )
 # ============================================================
 # STARTUP DIAGNOSTICS
 # ============================================================
