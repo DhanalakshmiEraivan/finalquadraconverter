@@ -105,9 +105,10 @@ function parseHash(): Route {
       };
 
     case 'ai':
-      return {
-        name: 'tools',
-      };
+  return {
+    name: 'ai',
+    id: parts[1] ?? '',
+  };
 
     case 'admin':
       return {
