@@ -9,6 +9,7 @@ export type Route =
   | { name: 'auth' }
   | { name: 'tools'; category?: string }
   | { name: 'tool'; id: string }
+  | { name: 'ai'; id: string }
   | { name: 'dashboard' }
   | { name: 'pricing' }
   | { name: 'admin' }
