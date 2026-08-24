@@ -3162,7 +3162,25 @@ function OptionField({
       </label>
     );
   }
+    if (opt.type === 'textarea') {
+    return (
+      <div className="mb-4">
+        <label className="mb-1.5 block text-sm font-medium text-ink-700">
+          {opt.label}
+        </label>
 
+        <textarea
+          value={String(value ?? '')}
+          onChange={(event) =>
+            onChange(event.target.value)
+          }
+          placeholder={opt.placeholder}
+          rows={5}
+          className="w-full resize-y rounded-xl border border-ink-200 px-4 py-3 text-sm text-ink-900 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
+        />
+      </div>
+    );
+  }
   return null;
 }
 
