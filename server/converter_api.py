@@ -82,7 +82,11 @@ from fastapi.responses import (
 
 from starlette.background import BackgroundTask
 
+from dotenv import load_dotenv
 
+load_dotenv(
+    Path(__file__).resolve().parent / ".env"
+)
 # ============================================================
 # CONFIGURATION
 # ============================================================
