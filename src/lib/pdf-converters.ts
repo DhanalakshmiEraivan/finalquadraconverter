@@ -1867,11 +1867,148 @@ export async function translatePDF(
     throw new Error('Select a target language.');
   }
 
-  return serverConvert(file, 'pdf-translate', {
-    targetLang: language,
-  });
+  return serverConvert(
+    file,
+    'pdf-translate',
+    {
+      targetLang: language,
+      language: 'eng',
+    },
+  );
 }
+export async function chatWithPDF(
+  file: File,
+  question: string,
+): Promise<ConvertResult> {
+  const trimmedQuestion = question.trim();
 
+  if (!trimmedQuestion) {
+    throw new Error(
+      'Please enter a question about the PDF.',
+    );
+  }
+
+  const baseUrl = getServerUrl();
+
+  const form = new FormData();
+
+  form.append(
+    'file',
+    file,
+    file.name,
+  );
+
+  form.append(
+    'question',
+    trimmedQuestion,
+  );
+
+  form.append(
+    'language',
+    'eng',
+  );
+
+  const controller =
+    new AbortController();
+
+  const timeoutId =
+    window.setTimeout(
+      () => controller.abort(),
+      DEFAULT_TIMEOUT_MS,
+    );
+
+  let response: Response;
+
+  try {
+    response = await fetch(
+      `${baseUrl}/pdf-chat`,
+      {
+        method: 'POST',
+        body: form,
+        signal: controller.signal,
+        headers: {
+          Accept: 'text/plain,*/*',
+        },
+      },
+    );
+  } catch (error) {
+    if (
+      error instanceof DOMException &&
+      error.name === 'AbortError'
+    ) {
+      throw new Error(
+        'PDF chat timed out. Please try a smaller PDF or a simpler question.',
+      );
+    }
+
+    throw new Error(
+      'Cannot connect to the QuadraConverter AI server.',
+    );
+  } finally {
+    window.clearTimeout(
+      timeoutId,
+    );
+  }
+
+  if (!response.ok) {
+    let message =
+      `PDF chat failed with HTTP ${response.status}.`;
+
+    try {
+      const payload =
+        await response.json();
+
+      if (
+        typeof payload === 'object' &&
+        payload !== null
+      ) {
+        const body =
+          payload as Record<
+            string,
+            unknown
+          >;
+
+        const detail =
+          body.detail ??
+          body.error ??
+          body.message;
+
+        if (
+          typeof detail === 'string' &&
+          detail.trim()
+        ) {
+          message =
+            detail;
+        }
+      }
+    } catch {
+      // Keep HTTP status.
+    }
+
+    throw new Error(
+      message,
+    );
+  }
+
+  const blob =
+    await response.blob();
+
+  if (
+    !blob.size
+  ) {
+    throw new Error(
+      'The PDF assistant returned an empty answer.',
+    );
+  }
+
+  return {
+    blob,
+    filename:
+      'pdf-answer.txt',
+    mimeType:
+      'text/plain',
+  };
+}
 // ─── PDF to Markdown ────────────────────────────────────────
 
 export async function pdfToMarkdown(
