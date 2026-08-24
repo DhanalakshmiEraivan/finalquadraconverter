@@ -3576,125 +3576,103 @@ def find_pdf_font(
 ) -> str | None:
 
     language = (
-        target_language
-        or ""
+        target_language or ""
     ).strip().lower()
 
-    candidates: list[str] = []
+    font_names = {
+        "tamil": "NotoSansTamil-Regular.ttf",
+        "ta": "NotoSansTamil-Regular.ttf",
 
-    if language in {
-        "tamil",
-        "ta",
-    }:
-        candidates = [
-            "/usr/share/fonts/truetype/noto/NotoSansTamil-Regular.ttf",
-            "/usr/share/fonts/opentype/noto/NotoSansTamil-Regular.ttf",
-            "/usr/share/fonts/truetype/noto/NotoSansTamilUI-Regular.ttf",
-        ]
+        "hindi": "NotoSansDevanagari-Regular.ttf",
+        "hi": "NotoSansDevanagari-Regular.ttf",
 
-    elif language in {
-        "hindi",
-        "hi",
-        "marathi",
-        "mr",
-        "nepali",
-        "ne",
-        "sanskrit",
-        "sa",
-    }:
-        candidates = [
-            "/usr/share/fonts/truetype/noto/NotoSansDevanagari-Regular.ttf",
-            "/usr/share/fonts/opentype/noto/NotoSansDevanagari-Regular.ttf",
-        ]
+        "marathi": "NotoSansDevanagari-Regular.ttf",
+        "mr": "NotoSansDevanagari-Regular.ttf",
 
-    elif language in {
-        "telugu",
-        "te",
-    }:
-        candidates = [
-            "/usr/share/fonts/truetype/noto/NotoSansTelugu-Regular.ttf",
-            "/usr/share/fonts/opentype/noto/NotoSansTelugu-Regular.ttf",
-        ]
+        "nepali": "NotoSansDevanagari-Regular.ttf",
+        "ne": "NotoSansDevanagari-Regular.ttf",
 
-    elif language in {
-        "kannada",
-        "kn",
-    }:
-        candidates = [
-            "/usr/share/fonts/truetype/noto/NotoSansKannada-Regular.ttf",
-            "/usr/share/fonts/opentype/noto/NotoSansKannada-Regular.ttf",
-        ]
+        "sanskrit": "NotoSansDevanagari-Regular.ttf",
+        "sa": "NotoSansDevanagari-Regular.ttf",
 
-    elif language in {
-        "malayalam",
-        "ml",
-    }:
-        candidates = [
-            "/usr/share/fonts/truetype/noto/NotoSansMalayalam-Regular.ttf",
-            "/usr/share/fonts/opentype/noto/NotoSansMalayalam-Regular.ttf",
-        ]
+        "telugu": "NotoSansTelugu-Regular.ttf",
+        "te": "NotoSansTelugu-Regular.ttf",
 
-    elif language in {
-        "bengali",
-        "bn",
-        "assamese",
-        "as",
-    }:
-        candidates = [
-            "/usr/share/fonts/truetype/noto/NotoSansBengali-Regular.ttf",
-            "/usr/share/fonts/opentype/noto/NotoSansBengali-Regular.ttf",
-        ]
+        "kannada": "NotoSansKannada-Regular.ttf",
+        "kn": "NotoSansKannada-Regular.ttf",
 
-    elif language in {
-        "gujarati",
-        "gu",
-    }:
-        candidates = [
-            "/usr/share/fonts/truetype/noto/NotoSansGujarati-Regular.ttf",
-            "/usr/share/fonts/opentype/noto/NotoSansGujarati-Regular.ttf",
-        ]
+        "malayalam": "NotoSansMalayalam-Regular.ttf",
+        "ml": "NotoSansMalayalam-Regular.ttf",
 
-    elif language in {
-        "punjabi",
-        "pa",
-    }:
-        candidates = [
-            "/usr/share/fonts/truetype/noto/NotoSansGurmukhi-Regular.ttf",
-            "/usr/share/fonts/opentype/noto/NotoSansGurmukhi-Regular.ttf",
-        ]
+        "bengali": "NotoSansBengali-Regular.ttf",
+        "bn": "NotoSansBengali-Regular.ttf",
 
-    elif language in {
-        "odia",
-        "or",
-    }:
-        candidates = [
-            "/usr/share/fonts/truetype/noto/NotoSansOriya-Regular.ttf",
-            "/usr/share/fonts/opentype/noto/NotoSansOriya-Regular.ttf",
-        ]
+        "assamese": "NotoSansBengali-Regular.ttf",
+        "as": "NotoSansBengali-Regular.ttf",
 
-    elif language in {
-        "urdu",
-        "ur",
-    }:
-        candidates = [
-            "/usr/share/fonts/truetype/noto/NotoNaskhArabic-Regular.ttf",
-            "/usr/share/fonts/opentype/noto/NotoSansArabic-Regular.ttf",
-        ]
+        "gujarati": "NotoSansGujarati-Regular.ttf",
+        "gu": "NotoSansGujarati-Regular.ttf",
 
-    candidates.extend(
-        [
-            "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
-            "/usr/share/fonts/opentype/noto/NotoSans-Regular.ttf",
-        ]
+        "punjabi": "NotoSansGurmukhi-Regular.ttf",
+        "pa": "NotoSansGurmukhi-Regular.ttf",
+
+        "odia": "NotoSansOriya-Regular.ttf",
+        "or": "NotoSansOriya-Regular.ttf",
+
+        "urdu": "NotoNaskhArabic-Regular.ttf",
+        "ur": "NotoNaskhArabic-Regular.ttf",
+    }
+
+    wanted = font_names.get(
+        language,
+        "NotoSans-Regular.ttf",
     )
 
-    for candidate in candidates:
+    font_directories = [
+        "/usr/share/fonts",
+        "/usr/local/share/fonts",
+    ]
 
-        if Path(candidate).exists():
-            return candidate
+    for directory in font_directories:
+
+        root = Path(directory)
+
+        if not root.exists():
+            continue
+
+        matches = list(
+            root.rglob(wanted)
+        )
+
+        if matches:
+            return str(
+                matches[0]
+            )
+
+    fallback_names = [
+        "NotoSans-Regular.ttf",
+        "DejaVuSans.ttf",
+    ]
+
+    for name in fallback_names:
+
+        for directory in font_directories:
+
+            root = Path(directory)
+
+            if not root.exists():
+                continue
+
+            matches = list(
+                root.rglob(name)
+            )
+
+            if matches:
+                return str(
+                    matches[0]
+                )
 
     return None
-
 
 def translate_pdf_with_layout(
     source: Path,
