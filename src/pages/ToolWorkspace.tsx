@@ -790,7 +790,20 @@ export function ToolWorkspace({
         return callPDFConverter(
           'translatePDF',
           first,
-          text('targetLang') || 'en'
+          text('targetLang') || 'en',
+        );
+
+      case 'pdfChat':
+        return callPDFConverter(
+          'chatWithPDF',
+          first,
+          text('question'),
+        );
+
+      case 'pdfToMarkdown':
+        return callPDFConverter(
+          'pdfToMarkdown',
+          first,
         );
 
       case 'pdfToMarkdown':
