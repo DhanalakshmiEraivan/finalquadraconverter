@@ -25,6 +25,8 @@ export function LandingPage({ navigate }: Props) {
   return (
     <div>
       {/* Hero */}
+  
+      {/* Hero */}
       <section className="relative overflow-hidden">
         <div className="absolute inset-0 grid-pattern opacity-60" />
         <div className="absolute -top-24 left-1/2 h-72 w-[42rem] -translate-x-1/2 rounded-full bg-brand-200/40 blur-3xl" />
@@ -33,37 +35,54 @@ export function LandingPage({ navigate }: Props) {
         <div className="container-page relative pt-16 pb-20 sm:pt-24">
           <div className="mx-auto max-w-3xl text-center">
             <div className="section-eyebrow animate-fade-up">
-              <Sparkles className="h-3.5 w-3.5" /> 50+ AI-powered tools in one place
+              <Sparkles className="h-3.5 w-3.5" />
+              50+ AI-powered tools in one place
             </div>
-            <h1 className="mt-6 font-display text-4xl font-extrabold leading-[1.05] tracking-tight text-ink-900 sm:text-6xl animate-fade-up" style={{ animationDelay: '60ms' }}>
+
+            <h1
+              className="mt-6 font-display text-4xl font-extrabold leading-[1.05] tracking-tight text-ink-900 sm:text-6xl animate-fade-up"
+              style={{ animationDelay: '60ms' }}
+            >
               Convert Anything.
               <br />
               Enhance Everything.
               <br />
               <span className="gradient-text">Powered by AI.</span>
             </h1>
-            <p className="mx-auto mt-6 max-w-xl text-lg leading-relaxed text-ink-500 animate-fade-up" style={{ animationDelay: '120ms' }}>
-              The all-in-one platform for documents, images, video, audio, and more — with AI OCR, enhancement, translation, and smart automation built in.
+
+            <p
+              className="mx-auto mt-6 max-w-xl text-lg leading-relaxed text-ink-500 animate-fade-up"
+              style={{ animationDelay: '120ms' }}
+            >
+              The all-in-one platform for documents, images, video, audio, and
+              more — with AI OCR, enhancement, translation, and smart automation
+              built in.
             </p>
-            <div className="mt-8 flex flex-wrap items-center justify-center gap-3 animate-fade-up" style={{ animationDelay: '180ms' }}>
+
+            <div
+              className="mt-8 flex flex-wrap items-center justify-center gap-3 animate-fade-up"
+              style={{ animationDelay: '180ms' }}
+            >
               <div className="flex items-center -space-x-2">
-                {[Star, Star, Star, Star, Star].map((_, i) => (
-                  <Star key={i} className="h-4 w-4 fill-warn-400 text-warn-400" />
+                {[0, 1, 2, 3, 4].map((i) => (
+                  <Star
+                    key={i}
+                    className="h-4 w-4 fill-warn-400 text-warn-400"
+                  />
                 ))}
               </div>
-              <span className="text-sm font-medium text-ink-600">Rated 4.9/5 by 120,000+ users</span>
+
+              <span className="text-sm font-medium text-ink-600">
+                Rated 4.9/5 by 120,000+ users
+              </span>
             </div>
           </div>
 
           {/* Upload area */}
-          
-
-         
-          </div>
-
-         
+          {/* Add your UploadZone component here if needed */}
         </div>
       </section>
+
 
       {/* Popular tool categories */}
       <section className="container-page py-16">
