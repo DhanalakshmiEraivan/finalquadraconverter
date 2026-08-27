@@ -58,30 +58,10 @@ export function LandingPage({ navigate }: Props) {
           {/* Upload area */}
           
 
-          <div className="mx-auto mt-4 max-w-3xl animate-fade-up" style={{ animationDelay: '240ms' }}>
-            <UploadZone files={files} onFiles={setFiles} />
-            {files.length > 0 && (
-              <div className="mt-5 flex justify-center">
-                <button onClick={() => navigate('/tools')} className="btn-primary">
-                  Continue to tools <ArrowRight className="h-4 w-4" />
-                </button>
-              </div>
-            )}
+         
           </div>
 
-          {/* Trust bar */}
-          <div className="mx-auto mt-16 flex max-w-4xl flex-wrap items-center justify-center gap-x-8 gap-y-3 text-sm text-ink-500 animate-fade-in" style={{ animationDelay: '300ms' }}>
-            {[
-              { icon: ShieldCheck, text: '256-bit encryption' },
-              { icon: Zap, text: 'Lightning fast' },
-              { icon: Globe, text: 'Works in browser' },
-              { icon: Lock, text: 'Auto-delete after 2h' },
-            ].map(({ icon: Icon, text }) => (
-              <span key={text} className="flex items-center gap-2">
-                <Icon className="h-4 w-4 text-accent-500" /> {text}
-              </span>
-            ))}
-          </div>
+         
         </div>
       </section>
 
