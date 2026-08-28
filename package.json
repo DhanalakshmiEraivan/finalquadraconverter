@@ -1,16 +1,17 @@
 {
-  "name": "quadraconverter",
+  "name": "finalquadraconverter",
   "private": true,
-  "version": "4.0.0",
+  "version": "0.0.0",
   "type": "module",
   "scripts": {
-  "dev": "vite",
-  "prebuild": "node scripts/generate-sitemap.mjs",
-  "build": "vite build",
-  "lint": "eslint .",
-  "preview": "vite preview",
-  "typecheck": "tsc --noEmit -p tsconfig.app.json",
-  "audit:tools": "node scripts/audit-tools.mjs"
+    "dev": "vite",
+    "prebuild": "node scripts/generate-sitemap.mjs",
+    "build": "vite build",
+    "lint": "eslint .",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.app.json",
+    "audit:tools": "node scripts/audit-tools.mjs"
+  }
 }
   "dependencies": {
     "@supabase/supabase-js": "^2.57.4",
