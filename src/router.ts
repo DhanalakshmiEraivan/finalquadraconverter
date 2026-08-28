@@ -1,15 +1,11 @@
-import {
-  useEffect,
-  useState,
-  useCallback,
-} from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { getToolById, tools } from '@/data/tools';
 
 export type Route =
   | { name: 'home' }
   | { name: 'auth' }
   | { name: 'tools'; category?: string }
   | { name: 'tool'; id: string }
-  | { name: 'ai'; id: string }
   | { name: 'dashboard' }
   | { name: 'pricing' }
   | { name: 'admin' }
@@ -21,66 +17,115 @@ export type Route =
   | { name: 'sign'; token: string }
   | { name: 'reset-password' };
 
-function parseHash(): Route {
-  /*
-   * Supabase recovery links can arrive with:
-   *
-   * ?reset=1
-   *
-   * or:
-   *
-   * #access_token=...&type=recovery
-   *
-   * or:
-   *
-   * #/reset-password
-   */
-  const searchParams =
-    new URLSearchParams(
-      window.location.search
-    );
+function parsePath(): Route {
+  const searchParams = new URLSearchParams(window.location.search);
 
-  const hash =
-    window.location.hash;
-
-  const isRecovery =
+  if (
     searchParams.get('reset') === '1' ||
-    searchParams.get('type') === 'recovery' ||
-    hash.includes('type=recovery');
-
-  if (isRecovery) {
-    return {
-      name: 'reset-password',
-    };
+    window.location.hash.includes('type=recovery')
+  ) {
+    return { name: 'reset-password' };
   }
 
-  const cleanHash =
-    hash.replace(/^#\/?/, '');
+  /*
+   * Backward compatibility for old hash URLs.
+   *
+   * Example:
+   * #/tool/pdf-to-jpg
+   * #/tools/pdf
+   */
+  const hash = window.location.hash.replace(/^#\/?/, '');
 
-  const parts =
-    cleanHash
-      .split('/')
-      .filter(Boolean);
+  if (hash) {
+    const parts = hash.split('/').filter(Boolean);
 
-  if (parts.length === 0) {
-    return {
-      name: 'home',
-    };
+    if (parts.length > 0) {
+      switch (parts[0]) {
+        case 'auth':
+          return { name: 'auth' };
+
+        case 'tools':
+          if (parts[1] === 'signatures') {
+            return { name: 'signatures' };
+          }
+
+          return {
+            name: 'tools',
+            category: parts[1],
+          };
+
+        case 'tool':
+          return {
+            name: 'tool',
+            id: parts[1] ?? '',
+          };
+
+        case 'dashboard':
+          return { name: 'dashboard' };
+
+        case 'pricing':
+          return { name: 'pricing' };
+
+        case 'ai':
+          return { name: 'tools' };
+
+        case 'admin':
+          return { name: 'admin' };
+
+        case 'features':
+          return { name: 'features' };
+
+        case 'about':
+          return { name: 'about' };
+
+        case 'contact':
+          return { name: 'contact' };
+
+        case 'security':
+          return { name: 'security' };
+
+        case 'signatures':
+          return { name: 'signatures' };
+
+        case 'sign':
+          return {
+            name: 'sign',
+            token: decodeURIComponent(parts[1] ?? ''),
+          };
+
+        case 'reset-password':
+          return { name: 'reset-password' };
+
+        default:
+          break;
+      }
+    }
   }
+
+  /*
+   * REAL SEO URL ROUTING
+   */
+
+  const pathname = window.location.pathname
+    .replace(/^\/+|\/+$/g, '');
+
+  if (!pathname) {
+    return { name: 'home' };
+  }
+
+  const parts = pathname.split('/').filter(Boolean);
+
+  /*
+   * Public pages
+   */
 
   switch (parts[0]) {
     case 'auth':
-      return {
-        name: 'auth',
-      };
+      return { name: 'auth' };
 
     case 'tools':
-      if (
-        parts[1] === 'signatures'
-      ) {
-        return {
-          name: 'signatures',
-        };
+      if (parts[1] === 'signatures') {
+        return { name: 'signatures' };
       }
 
       return {
@@ -88,151 +133,134 @@ function parseHash(): Route {
         category: parts[1],
       };
 
-    case 'tool':
-      return {
-        name: 'tool',
-        id: parts[1] ?? '',
-      };
-
     case 'dashboard':
-      return {
-        name: 'dashboard',
-      };
+      return { name: 'dashboard' };
 
     case 'pricing':
-      return {
-        name: 'pricing',
-      };
-
-    case 'ai':
-  return {
-    name: 'ai',
-    id: parts[1] ?? '',
-  };
-
-    case 'admin':
-      return {
-        name: 'admin',
-      };
+      return { name: 'pricing' };
 
     case 'features':
-      return {
-        name: 'features',
-      };
+      return { name: 'features' };
 
     case 'about':
-      return {
-        name: 'about',
-      };
+      return { name: 'about' };
 
     case 'contact':
-      return {
-        name: 'contact',
-      };
+      return { name: 'contact' };
 
     case 'security':
-      return {
-        name: 'security',
-      };
+      return { name: 'security' };
 
     case 'signatures':
-      return {
-        name: 'signatures',
-      };
+      return { name: 'signatures' };
+
+    case 'admin':
+      return { name: 'admin' };
 
     case 'sign':
       return {
         name: 'sign',
-        token: decodeURIComponent(
-          parts[1] ?? ''
-        ),
+        token: decodeURIComponent(parts[1] ?? ''),
       };
 
     case 'reset-password':
-      return {
-        name: 'reset-password',
-      };
+      return { name: 'reset-password' };
 
     default:
-      return {
-        name: 'home',
-      };
+      break;
   }
+
+  /*
+   * REAL TOOL SEO URL
+   *
+   * Example:
+   * /pdf-to-jpg
+   * /pdf-to-word
+   * /img-compress
+   * /qr-generate
+   */
+
+  const tool = getToolById(parts[0]);
+
+  if (tool) {
+    return {
+      name: 'tool',
+      id: tool.id,
+    };
+  }
+
+  /*
+   * Unknown URL
+   */
+  return { name: 'home' };
 }
 
 export function useRouter() {
-  const [route, setRoute] =
-    useState<Route>(() =>
-      parseHash()
-    );
+  const [route, setRoute] = useState<Route>(() => parsePath());
 
   useEffect(() => {
     const onChange = () => {
-      setRoute(parseHash());
+      setRoute(parsePath());
 
       window.scrollTo({
         top: 0,
-        behavior:
-          'instant' as ScrollBehavior,
+        behavior: 'instant' as ScrollBehavior,
       });
     };
 
-    /*
-     * Supabase recovery redirects can
-     * change the URL without a normal
-     * application navigation.
-     */
-    window.addEventListener(
-      'hashchange',
-      onChange
-    );
-
-    window.addEventListener(
-      'popstate',
-      onChange
-    );
+    window.addEventListener('popstate', onChange);
+    window.addEventListener('hashchange', onChange);
 
     return () => {
-      window.removeEventListener(
-        'hashchange',
-        onChange
-      );
-
-      window.removeEventListener(
-        'popstate',
-        onChange
-      );
+      window.removeEventListener('popstate', onChange);
+      window.removeEventListener('hashchange', onChange);
     };
   }, []);
 
-  const navigate = useCallback(
-    (path: string) => {
-      const clean =
-        path.startsWith('#')
-          ? path
-          : `#${path.startsWith('/')
-              ? path
-              : `/${path}`}`;
+  const navigate = useCallback((path: string) => {
+    let cleanPath = path;
 
-      if (
-        window.location.hash === clean
-      ) {
-        setRoute(parseHash());
+    /*
+     * Convert old hash navigation:
+     *
+     * #/tool/pdf-to-jpg
+     *
+     * into:
+     *
+     * /pdf-to-jpg
+     */
 
-        window.scrollTo({
-          top: 0,
-          behavior:
-            'instant' as ScrollBehavior,
-        });
+    if (cleanPath.startsWith('#')) {
+      cleanPath = cleanPath.replace(/^#\/?/, '/');
 
-        return;
+      if (cleanPath.startsWith('/tool/')) {
+        cleanPath = cleanPath.replace('/tool/', '/');
       }
+    }
 
-      window.location.hash =
-        clean;
-    },
-    []
-  );
+    if (!cleanPath.startsWith('/')) {
+      cleanPath = `/${cleanPath}`;
+    }
+
+    /*
+     * Keep old category URLs working.
+     */
+    if (cleanPath === '/tools') {
+      cleanPath = '/tools';
+    }
+
+    if (window.location.pathname !== cleanPath) {
+      window.history.pushState({}, '', cleanPath);
+      setRoute(parsePath());
+
+      window.scrollTo({
+        top: 0,
+        behavior: 'instant' as ScrollBehavior,
+      });
+    } else {
+      setRoute(parsePath());
+    }
+  }, []);
 
   return {
     route,
