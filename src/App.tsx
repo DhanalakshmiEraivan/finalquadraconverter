@@ -68,17 +68,13 @@ function App() {
   /*
    * Protected routes.
    */
-  if (
-    (
-      route.name === 'dashboard' ||
-      route.name === 'admin' ||
-      route.name === 'tool'
-    ) &&
-    !user &&
-    !isPublicSigningRoute
-  ) {
-    return <AuthPage />;
-  }
+ if (
+  (route.name === 'dashboard' || route.name === 'admin') &&
+  !user &&
+  !isPublicSigningRoute
+) {
+  return <AuthPage />;
+}
 
   /*
    * Admin protection.
