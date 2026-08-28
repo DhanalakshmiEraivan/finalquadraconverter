@@ -11,8 +11,7 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.app.json",
     "audit:tools": "node scripts/audit-tools.mjs"
-  }
-}
+  },
   "dependencies": {
     "@supabase/supabase-js": "^2.57.4",
     "@types/qrcode": "^1.5.6",
